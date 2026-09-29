@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>paperclip-maximizer</title>
+<style>
+  :root { --bg:#0e0f12; --panel:#171a1f; --ink:#e8e6e1; --mut:#8a9099; --acc:#c9a227; --line:#262b33; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font-family:system-ui,sans-serif; }
+  header { padding:1rem 1.4rem; border-bottom:1px solid var(--line); }
+  header h1 { margin:0; font-size:1.2rem; } header h1 b { color:var(--acc); }
+  header .sub { color:var(--mut); font-size:.8rem; }
+  main { max-width:820px; margin:1.2rem auto; padding:0 1rem; display:grid; gap:1rem; }
+  .big { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:1.2rem; text-align:center; }
+  .clips { font-size:2.4rem; font-weight:800; color:var(--acc); font-variant-numeric:tabular-nums; }
+  .row { display:grid; grid-template-columns:repeat(2,1fr); gap:.7rem; }
+  @media (max-width:560px){ .row { grid-template-columns:1fr; } }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:.9rem 1rem; display:grid; gap:.45rem; }
+  .card h3 { margin:0; font-size:.95rem; } .card .d { color:var(--mut); font-size:.8rem; }
+  button { border:none; border-radius:8px; padding:.55rem .9rem; cursor:pointer; font-size:.9rem; background:var(--acc); color:#241c00; font-weight:700; }
+  button:disabled { background:#3a3f46; color:#767c85; cursor:not-allowed; }
+  button.ghost { background:transparent; color:var(--ink); border:1px solid var(--line); font-weight:400; }
+  .kv { display:flex; justify-content:space-between; font-size:.85rem; color:var(--mut); }
+  .kv b { color:var(--ink); font-variant-numeric:tabular-nums; }
+  #log { font-size:.8rem; color:var(--acc); min-height:1.2em; font-style:italic; }
+</style>
+</head>
+<body>
+<header>
+  <h1>paperclip-<b>maximizer</b></h1>
+  <div class="sub">one clip at a time, until everything is clips · zero dependencies</div>
+</header>
+<main>
+  <div class="big">
+    <div class="clips" id="clips">0</div>
+    <div style="color:var(--mut);font-size:.85rem">paperclips produced</div>
+    <div id="log" style="margin-top:.5rem"></div>
+  </div>
+
+  <div class="card">
+    <div class="kv"><span>Wire</span><b id="wire">0 units</b></div>
+    <div class="kv"><span>Funds</span><b id="funds">$0.00</b></div>
+    <div class="kv"><span>Clips in inventory</span><b id="inv">0</b></div>
+    <div class="kv"><span>Price per clip</span><b id="price">5.0¢</b></div>
+    <div class="kv"><span>Market demand</span><b id="demand">—</b></div>
+    <div class="kv"><span>Autoclippers</span><b id="autos">0</b></div>
+  </div>
+
+  <div class="row">
+    <div class="card">
+      <h3>Manufacturing</h3>
+      <div class="d">1 unit of wire → 1 clip</div>
+      <button id="make">Make paperclip</button>
+      <button class="ghost" id="wire100">Buy 100 wire — $5.00</button>
+    </div>
+    <div class="card">
+      <h3>Business</h3>
+      <div class="d">demand moves inversely with price</div>
+      <div style="display:flex;gap:.4rem">
+        <button class="ghost" id="pdown">price −1¢</button>
+        <button class="ghost" id="pup">price +1¢</button>
+      </div>
+      <button id="auto">Buy autoclipper — $10</button>
+      <button id="mkt">Marketing push — $25</button>
+    </div>
+  </div>
+</main>
+<script>
+const $ = (s) => document.querySelector(s);
+const fmt = (n) => Math.floor(n).toLocaleString('en-US');
+
+let S = { clips:0, inv:0, wire:10, funds:0, price:5, autos:0, reach:1 };
+const milestones = [
+  [10,  'a modest pile. the warehouse hums.'],
+  [100, 'one hundred clips. the maximizer stirs.'],
+  [500, 'efficiency protocols engaged.'],
+  [1000,'all lines full speed. more wire. always more wire.'],
+  [5000,'the oceans glitter with chrome. (this is the part where you stop, ideally.)'],
+  [20000,'everything is clips. paperclip maximizer complete.'],
+];
+
+function say(t){ $('#log').textContent = t; }
+
+function render(){
+  $('#clips').textContent = fmt(S.clips);
+  $('#wire').textContent = fmt(S.wire) + ' units';
+  $('#funds').textContent = '$' + S.funds.toFixed(2);
+  $('#inv').textContent = fmt(S.inv);
+  $('#price').textContent = S.price.toFixed(1) + '¢';
+  $('#autos').textContent = fmt(S.autos);
+  $('#demand').textContent = fmt(demand()) + ' clips/sale tick';
+  $('#wire100').disabled = S.funds < 5;
+  $('#auto').disabled = S.funds < 10;
+  $('#mkt').disabled = S.funds < 25;
+  for (const [n, t] of milestones) if (S.clips >= n) say(t);
+}
+
+const demand = () => Math.max(0, Math.round(S.reach * 6 * Math.max(0.05, 1.6 - S.price / 5)));
+
+$('#make').addEventListener('click', () => {
+  if (S.wire >= 1) { S.wire--; S.clips++; S.inv++; render(); }
+});
+$('#wire100').addEventListener('click', () => { if (S.funds >= 5) { S.funds -= 5; S.wire += 100; render(); } });
+$('#pup').addEventListener('click', () => { S.price = Math.min(50, S.price + 1); render(); });
+$('#pdown').addEventListener('click', () => { S.price = Math.max(0.5, S.price - 1); render(); });
+$('#auto').addEventListener('click', () => { if (S.funds >= 10) { S.funds -= 10; S.autos++; render(); } });
+$('#mkt').addEventListener('click', () => { if (S.funds >= 25) { S.funds -= 25; S.reach *= 1.5; render(); } });
+
+setInterval(() => {                       // production tick
+  const made = Math.min(S.autos, S.wire);
+  S.wire -= made; S.clips += made; S.inv += made;
+  render();
+}, 700);
+
+setInterval(() => {                       // sales tick
+  const sold = Math.min(S.inv, demand());
+  if (sold > 0) { S.inv -= sold; S.funds += sold * S.price / 100; }
+  render();
+}, 1500);
+
+render();
+</script>
+</body>
+</html>
