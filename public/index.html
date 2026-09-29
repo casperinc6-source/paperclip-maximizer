@@ -45,6 +45,7 @@
     <div class="kv"><span>Price per clip</span><b id="price">5.0¢</b></div>
     <div class="kv"><span>Market demand</span><b id="demand">—</b></div>
     <div class="kv"><span>Autoclippers</span><b id="autos">0</b></div>
+    <button id="reset" class="ghost" style="margin-top:.4rem">Reset universe</button>
   </div>
 
   <div class="row">
@@ -70,7 +71,23 @@
 const $ = (s) => document.querySelector(s);
 const fmt = (n) => Math.floor(n).toLocaleString('en-US');
 
-let S = { clips:0, inv:0, wire:10, funds:0, price:5, autos:0, reach:1 };
+const DEFAULTS = { clips:0, inv:0, wire:10, funds:0, price:5, autos:0, reach:1 };
+let S = { ...DEFAULTS };
+let dirty = false;
+
+// ---- persistence: server-side SQLite, autosaved ----------------------------
+const saveNow = () => fetch('/api/state', {
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(S),
+}).catch(() => {});
+addEventListener('pagehide', () =>
+  navigator.sendBeacon('/api/state', new Blob([JSON.stringify(S)], { type: 'application/json' })));
+fetch('/api/state').then((r) => r.json()).then((saved) => {
+  if (saved && typeof saved === 'object' && saved.clips != null) {
+    S = { ...DEFAULTS, ...saved };
+    say('previous universe restored — carry on maximizing.');
+    render();
+  }
+}).catch(() => {});
 const milestones = [
   [10,  'a modest pile. the warehouse hums.'],
   [100, 'one hundred clips. the maximizer stirs.'],
@@ -83,6 +100,7 @@ const milestones = [
 function say(t){ $('#log').textContent = t; }
 
 function render(){
+  dirty = true;
   $('#clips').textContent = fmt(S.clips);
   $('#wire').textContent = fmt(S.wire) + ' units';
   $('#funds').textContent = '$' + S.funds.toFixed(2);
@@ -118,6 +136,18 @@ setInterval(() => {                       // sales tick
   if (sold > 0) { S.inv -= sold; S.funds += sold * S.price / 100; }
   render();
 }, 1500);
+
+setInterval(() => {                       // autosave dirty state
+  if (dirty) { dirty = false; saveNow(); }
+}, 4000);
+
+$('#reset').addEventListener('click', () => {
+  if (!confirm('Fold this universe back into nothing? All clips, wire and funds will be lost.')) return;
+  S = { ...DEFAULTS };
+  fetch('/api/state', { method: 'DELETE' }).catch(() => {});
+  say('universe reset. one clip at a time, then.');
+  render();
+});
 
 render();
 </script>
