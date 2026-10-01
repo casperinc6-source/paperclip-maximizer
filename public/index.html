@@ -24,6 +24,20 @@
   .kv { display:flex; justify-content:space-between; font-size:.85rem; color:var(--mut); }
   .kv b { color:var(--ink); font-variant-numeric:tabular-nums; }
   #log { font-size:.8rem; color:var(--acc); min-height:1.2em; font-style:italic; }
+  .cpsline { margin-top:.5rem; font-size:.85rem; color:var(--mut); }
+  .cpsline b { color:var(--acc); font-variant-numeric:tabular-nums; }
+  details.achv { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:.7rem 1rem; }
+  details.achv summary { cursor:pointer; font-weight:700; font-size:.95rem; list-style:none; display:flex; align-items:center; gap:.5rem; }
+  details.achv summary::-webkit-details-marker { display:none; }
+  .achv-count { font-size:.75rem; color:var(--mut); font-weight:400; }
+  .achv-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(210px,1fr)); gap:.5rem; margin-top:.8rem; }
+  .ach { border:1px solid var(--line); border-radius:10px; padding:.55rem .7rem; opacity:.38; }
+  .ach .t { font-size:.82rem; font-weight:700; }
+  .ach .d { font-size:.72rem; color:var(--mut); }
+  .ach.on { opacity:1; border-color:var(--acc); }
+  .ach.on .t { color:var(--acc); }
+  #toast { position:fixed; left:50%; bottom:1.4rem; transform:translateX(-50%) translateY(20px); background:var(--panel); border:1px solid var(--acc); color:var(--acc); border-radius:999px; padding:.6rem 1.2rem; font-weight:700; font-size:.9rem; opacity:0; pointer-events:none; transition:opacity .25s, transform .25s; z-index:9; }
+  #toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
 </style>
 </head>
 <body>
@@ -36,6 +50,7 @@
     <div class="clips" id="clips">0</div>
     <div style="color:var(--mut);font-size:.85rem">paperclips produced</div>
     <div id="log" style="margin-top:.5rem"></div>
+    <div class="cpsline">production rate <b id="cps">0.0</b> clips/sec <span style="color:var(--mut);font-size:.72rem">(10s rolling)</span></div>
   </div>
 
   <div class="card">
@@ -66,7 +81,13 @@
       <button id="mkt">Marketing push — $25</button>
     </div>
   </div>
+
+  <details class="achv" id="achv-panel">
+    <summary>🏆 Achievements <span class="achv-count" id="achv-count">0 / 12</span></summary>
+    <div class="achv-grid" id="achv-grid"></div>
+  </details>
 </main>
+<div id="toast" role="status"></div>
 <script>
 const $ = (s) => document.querySelector(s);
 const fmt = (n) => Math.floor(n).toLocaleString('en-US');
@@ -97,6 +118,58 @@ const milestones = [
   [20000,'everything is clips. paperclip maximizer complete.'],
 ];
 
+// ---- achievements -----------------------------------------------------------
+const ACHV = [
+  ['first-clip',  'Hello, Clip',           'make your first paperclip',    (s)=>s.clips>=1],
+  ['hundred-club','Hundred Club',          'produce 100 clips total',      (s)=>s.clips>=100],
+  ['five-hundred','Half-K',                'produce 500 clips total',      (s)=>s.clips>=500],
+  ['kilo',        'Kilo-Clips',            'produce 1,000 clips total',    (s)=>s.clips>=1000],
+  ['five-k',      'Oceans of Chrome',      'produce 5,000 clips total',    (s)=>s.clips>=5000],
+  ['twenty-k',    'Everything Is Clips',   'produce 20,000 clips total',   (s)=>s.clips>=20000],
+  ['first-auto',  'Hands Free',            'buy your first autoclipper',   (s)=>s.autos>=1],
+  ['ten-auto',    'Assembly Line',         'own 10 autoclippers',          (s)=>s.autos>=10],
+  ['fifty-auto',  'The Factory',           'own 50 autoclippers',          (s)=>s.autos>=50],
+  ['rich',        'Venture Capital',       'hold $100 in funds',           (s)=>s.funds>=100],
+  ['marketer',    'Growth Hacker',         'run 4 marketing pushes',       (s)=>s.reach>=Math.pow(1.5,4)],
+  ['cheap',       'Undercutting Everyone', 'drop the price to 1¢',         (s)=>s.price<=1],
+];
+let unlocked = new Set(S.achv || []);
+let toastTimer = null;
+function toast(t){
+  const el = $('#toast');
+  el.textContent = t;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3200);
+}
+function renderAchv(){
+  $('#achv-grid').innerHTML = ACHV.map(([id,t,d]) =>
+    `<div class="ach${unlocked.has(id)?' on':''}" id="achv-${id}"><div class="t">${t}</div><div class="d">${d}</div></div>`).join('');
+  $('#achv-count').textContent = unlocked.size + ' / ' + ACHV.length;
+}
+function checkAchv(){
+  for (const [id,t,,cond] of ACHV){
+    if (!unlocked.has(id) && cond(S)){
+      unlocked.add(id);
+      S.achv = [...unlocked];
+      dirty = true;
+      toast('🏆 ' + t);
+      const card = document.getElementById('achv-' + id);
+      if (card) card.classList.add('on');
+      $('#achv-count').textContent = unlocked.size + ' / ' + ACHV.length;
+    }
+  }
+}
+
+// ---- cps meter (10s rolling window) -----------------------------------------
+const cpsLog = []; // [timestamp, clipsMade]
+function bumpCps(n){ if (n > 0) cpsLog.push([Date.now(), n]); }
+function cpsNow(){
+  const cut = Date.now() - 10000;
+  while (cpsLog.length && cpsLog[0][0] < cut) cpsLog.shift();
+  return cpsLog.reduce((s,[,n]) => s+n, 0) / 10;
+}
+
 function say(t){ $('#log').textContent = t; }
 
 function render(){
@@ -112,12 +185,14 @@ function render(){
   $('#auto').disabled = S.funds < 10;
   $('#mkt').disabled = S.funds < 25;
   for (const [n, t] of milestones) if (S.clips >= n) say(t);
+  $('#cps').textContent = cpsNow().toFixed(1);
+  checkAchv();
 }
 
 const demand = () => Math.max(0, Math.round(S.reach * 6 * Math.max(0.05, 1.6 - S.price / 5)));
 
 $('#make').addEventListener('click', () => {
-  if (S.wire >= 1) { S.wire--; S.clips++; S.inv++; render(); }
+  if (S.wire >= 1) { S.wire--; S.clips++; S.inv++; bumpCps(1); render(); }
 });
 $('#wire100').addEventListener('click', () => { if (S.funds >= 5) { S.funds -= 5; S.wire += 100; render(); } });
 $('#pup').addEventListener('click', () => { S.price = Math.min(50, S.price + 1); render(); });
@@ -127,6 +202,7 @@ $('#mkt').addEventListener('click', () => { if (S.funds >= 25) { S.funds -= 25; 
 
 setInterval(() => {                       // production tick
   const made = Math.min(S.autos, S.wire);
+  if (made > 0) bumpCps(made);
   S.wire -= made; S.clips += made; S.inv += made;
   render();
 }, 700);
@@ -144,11 +220,15 @@ setInterval(() => {                       // autosave dirty state
 $('#reset').addEventListener('click', () => {
   if (!confirm('Fold this universe back into nothing? All clips, wire and funds will be lost.')) return;
   S = { ...DEFAULTS };
+  unlocked = new Set();
+  cpsLog.length = 0;
+  renderAchv();
   fetch('/api/state', { method: 'DELETE' }).catch(() => {});
   say('universe reset. one clip at a time, then.');
   render();
 });
 
+renderAchv();
 render();
 </script>
 </body>

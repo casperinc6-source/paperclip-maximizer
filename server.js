@@ -36,6 +36,10 @@ function sanitize(s) {
     price: num(s.price, 0.5, 50, 5),
     autos: num(s.autos, 0, 1e6, 0),
     reach: num(s.reach, 1, 1e6, 1),
+    // achievement unlock ids (whitelisted strings, capped)
+    achv: Array.isArray(s.achv)
+      ? s.achv.filter((x) => typeof x === 'string' && x.length > 0 && x.length <= 40).slice(0, 100)
+      : [],
   };
 }
 
